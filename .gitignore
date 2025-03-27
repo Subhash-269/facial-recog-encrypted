@@ -1,1 +1,6 @@
-facial_recog_encrypted/backend/__pycache__/
+**/__pycache__/
+*.sqlite3
+facial_recog_encrypted\db.sqlite3
+facial_recog_encrypted\backend\__pycache__
+facial_recog_encrypted\facial_recog_encrypted\__pycache__
+facial_recog_encrypted\backend\migrations
