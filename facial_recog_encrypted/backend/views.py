@@ -7,7 +7,7 @@ from . import encoder,decoder
 from phe import paillier
 from rest_framework import status
 import base64
-
+from .models import Image,EncryptedChunk
 @api_view(['GET'])
 def hello_api(request):
     return Response({"message": "Hello API"})
@@ -17,34 +17,53 @@ def encrypt_images_api(request):
     image_files = request.FILES.getlist("images")
     
     if not image_files:
-        return Response({"error": "No image files provided under key 'images'."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "No image files provided under key 'images'."},
+                        status=status.HTTP_400_BAD_REQUEST)
 
-    response_payload = []
-    
-    # Generate one keypair for all images (or generate one per image if needed)
+    # Generate one keypair for all images
     public_key, private_key = paillier.generate_paillier_keypair()
 
+    response_payload = []
+
     for image in image_files:
-        # Use a function that accepts a file-like object:
         encrypted_chunks = encoder.encode_and_encrypt_image(image, public_key, max_chunks=256)
         
+        # Create the Image record.
+        new_image = Image.objects.create(
+            filename=image.name,
+            public_key_n=str(public_key.n),
+            private_key_p=str(private_key.p),  # be cautious about storing private keys!
+            private_key_q=str(private_key.q),
+        )
+
+        # Create EncryptedChunk records for each chunk.
         serialized_chunks = []
-        for chunk in encrypted_chunks:
+        for idx, chunk in enumerate(encrypted_chunks):
+            EncryptedChunk.objects.create(
+                image=new_image,
+                chunk_index=idx,
+                ciphertext=str(chunk.ciphertext()),  # Convert the ciphertext to string.
+                exponent=chunk.exponent
+            )
             serialized_chunks.append({
-                "ciphertext": str(chunk.ciphertext()),  # Call the method/property to get its value.
+                "chunk_index": idx,
+                "ciphertext": str(chunk.ciphertext()),
                 "exponent": chunk.exponent
             })
-        
+
         response_payload.append({
-            "filename": image.name,
-            "encrypted_chunks": serialized_chunks
+            "filename": new_image.filename,
+            "public_key_n": new_image.public_key_n,
+            "private_key_p": new_image.private_key_p,
+            "private_key_q": new_image.private_key_q,
+            "chunks": serialized_chunks,
         })
 
     return Response({
-        "public_key": {"n": str(public_key.n)},
-        "private_key": {"p": str(private_key.p), "q": str(private_key.q)},
+        "message": "Encryption successful, data stored in database.",
         "data": response_payload
     }, status=status.HTTP_200_OK)
+
 
 
 @api_view(['POST'])
